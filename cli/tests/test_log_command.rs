@@ -56,6 +56,7 @@ fn test_log_with_no_template() {
     - builtin_log_detailed
     - builtin_log_node
     - builtin_log_node_ascii
+    - builtin_log_node_branch
     - builtin_log_oneline
     - builtin_log_redacted
     - builtin_op_log_comfortable
@@ -1469,12 +1470,31 @@ fn test_graph_styles() {
     [EOF]
     ");
 
+    // Branch style. The node symbols `○` and `●` become commit dots that join
+    // the lines, and `@` stays.
+    test_env.add_config(r#"ui.graph.style = "branch""#);
+    let output = work_dir.run_jj(["log", "-T=description"]);
+    insta::assert_snapshot!(output, @"
+    @    merge
+    
+       side bookmark
+       with
+       long
+       description
+       main bookmark 2
+    
+      main bookmark 1
+      initial
+    
+    [EOF]
+    ");
+
     // Invalid style name
     let output = work_dir.run_jj(["log", "--config=ui.graph.style=unknown"]);
     insta::assert_snapshot!(output, @"
     ------- stderr -------
     Config error: Invalid type or value for ui.graph.style
-    Caused by: unknown variant `unknown`, expected one of `ascii`, `ascii-large`, `curved`, `square`
+    Caused by: unknown variant `unknown`, expected one of `ascii`, `ascii-large`, `curved`, `square`, `branch`
 
     For help, see https://docs.jj-vcs.dev/latest/config/ or use `jj help -k config`.
     [EOF]
@@ -1580,6 +1600,33 @@ fn test_graph_crossing() {
     |/
     o  A
     +
+    [EOF]
+    ");
+
+    insta::assert_snapshot!(log("branch", None), @"
+    @  N
+      C
+         M
+     
+        D
+    
+       B
+    
+      A
+    
+    [EOF]
+    ");
+    insta::assert_snapshot!(log("branch", Some("prefer-vertical")), @"
+    @  N
+      C
+         M
+     
+        D
+    
+       B
+    
+      A
+    
     [EOF]
     ");
 

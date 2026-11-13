@@ -169,7 +169,8 @@
                                 "curved",
                                 "square",
                                 "ascii",
-                                "ascii-large"
+                                "ascii-large",
+                                "branch"
                             ],
                             "default": "curved"
                         },

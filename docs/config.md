@@ -764,9 +764,16 @@ log = "builtin_log_compact_full_description"
 
 ```toml
 [ui]
-# Possible values: "curved" (default), "square", "ascii", "ascii-large"
+# Possible values: "curved" (default), "square", "ascii", "ascii-large", "branch"
 graph.style = "square"
 ```
+
+The `branch` style draws the graph with the branch drawing symbols, `U+F5D0` to
+`U+F60D`. Terminals such as Kitty and Ghostty draw these symbols, so that the
+lines join with no gaps. Other terminals can show them as empty boxes. In this
+style, the node symbols `○` and `●` become commit dots that join the lines,
+and immutable commits use `●`. jj sets `LESSUTFCHARDEF` for the pager, so
+that `less` shows the symbols.
 
 Where two lines cross, the graph shows only one of them. The `ascii-large`
 style shows the vertical line, and the other styles show the horizontal line.

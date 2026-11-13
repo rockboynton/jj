@@ -44,6 +44,7 @@ use crate::formatter::FormatterFactory;
 use crate::formatter::HeadingLabeledWriter;
 use crate::formatter::LabeledScope;
 use crate::formatter::PlainTextFormatter;
+use crate::graphlog::GraphSymbols;
 
 const BUILTIN_PAGER_NAME: &str = ":builtin";
 
@@ -331,12 +332,20 @@ impl PagerConfig {
         if matches!(config.get("ui.paginate")?, PaginationChoice::Never) {
             return Ok(Self::Disabled);
         }
-        let args: CommandNameAndArgs = config.get("ui.pager")?;
+        let mut args: CommandNameAndArgs = config.get("ui.pager")?;
         if args.as_str() == Some(BUILTIN_PAGER_NAME) {
-            Ok(Self::Builtin(config.get("ui.streampager")?))
-        } else {
-            Ok(Self::External(args))
+            return Ok(Self::Builtin(config.get("ui.streampager")?));
         }
+        // The branch graph style draws symbols in the Private Use Area, which
+        // `less` shows as escape codes unless this variable marks them as
+        // printable.
+        let style = config.get::<GraphSymbols>("ui.graph.style");
+        if style.is_ok_and(|style| style == GraphSymbols::Branch)
+            && env::var_os("LESSUTFCHARDEF").is_none()
+        {
+            args = args.with_default_env("LESSUTFCHARDEF", "E000-F8FF:p");
+        }
+        Ok(Self::External(args))
     }
 }
 

@@ -35,7 +35,13 @@ use renderdag::pipeline::row_shape_to_prefix_lines::box_drawing::Square;
 
 use crate::formatter::Formatter;
 use crate::formatter::FormatterExt as _;
+use crate::formatter::PlainTextFormatter;
 use crate::ui::Ui;
+
+mod branch_drawing;
+mod text_writer;
+
+use self::branch_drawing::BranchDrawing;
 
 /// Color labels for graph lines, under the `graph` label. A line has the label
 /// that matches its line ID. Twelve labels allow six basic terminal colors and
@@ -65,6 +71,8 @@ pub struct SaplingGraphLog<'writer, K> {
     columns_to_chars: fn(u64) -> u64,
     formatter: &'writer mut dyn Formatter,
     ui: &'writer Ui,
+    /// Whether to draw `○` and `●` nodes as branch drawing commit dots.
+    branch_nodes: bool,
 }
 
 fn convert_graph_edge_into_ancestor<K: Clone>(e: &GraphEdge<K>) -> Ancestor<K> {
@@ -117,6 +125,17 @@ where
         }
         render_node_symbol(glyph_formatter.as_mut())?;
         drop(glyph_formatter);
+        let mut glyph = String::from_utf8_lossy(&glyph);
+        if self.branch_nodes {
+            let mut plain = vec![];
+            render_node_symbol(&mut PlainTextFormatter::new(&mut plain))?;
+            let plain = String::from_utf8_lossy(&plain);
+            let up = !row_shape.is_head;
+            let down = !row_shape.is_root;
+            if let Some(dot) = branch_node_dot(&plain, up, down) {
+                glyph = glyph.replacen(&*plain, dot, 1).into();
+            }
+        }
         let mut result = Ok(());
         self.text.write_next_lines(
             |text, color| {
@@ -126,7 +145,7 @@ where
             },
             prefix_lines,
             row_shape.separator_line,
-            &String::from_utf8_lossy(&glyph),
+            &glyph,
             text,
             self.shaper.options().min_row_height,
         );
@@ -138,6 +157,26 @@ where
         let columns = self.shaper.width(Some(id), Some(&parents));
         (self.columns_to_chars)(columns).try_into().unwrap()
     }
+}
+
+/// The branch drawing commit dot for the node symbol `○` (hollow) or `●`
+/// (full), with stubs that join the lines above and below the node.
+fn branch_node_dot(symbol: &str, up: bool, down: bool) -> Option<&'static str> {
+    let full = match symbol {
+        "●" => true,
+        "○" => false,
+        _ => return None,
+    };
+    Some(match (full, up, down) {
+        (true, false, false) => "\u{f5ee}",
+        (false, false, false) => "\u{f5ef}",
+        (true, false, true) => "\u{f5f6}",
+        (false, false, true) => "\u{f5f7}",
+        (true, true, false) => "\u{f5f8}",
+        (false, true, false) => "\u{f5f9}",
+        (true, true, true) => "\u{f5fa}",
+        (false, true, true) => "\u{f5fb}",
+    })
 }
 
 /// Writes one piece of graph text, with the color label of its line.
@@ -170,6 +209,7 @@ pub enum GraphSymbols {
     AsciiLarge,
     Curved,
     Square,
+    Branch,
 }
 
 /// Which line the graph draws where two lines cross.
@@ -210,6 +250,7 @@ pub fn get_graphlog<'a, K: Clone + Debug + Eq + Hash + 'a>(
         GraphSymbols::AsciiLarge => Box::new(AsciiLarge),
         GraphSymbols::Curved => Box::new(BoxDrawing::<Curved>::new()),
         GraphSymbols::Square => Box::new(BoxDrawing::<Square>::new()),
+        GraphSymbols::Branch => Box::new(BranchDrawing::new()),
     };
     // Match renderdag's column widths for each style. PrefixLineRenderer does
     // not expose the column-to-character conversion through its public API.
@@ -239,5 +280,6 @@ pub fn get_graphlog<'a, K: Clone + Debug + Eq + Hash + 'a>(
         columns_to_chars,
         formatter,
         ui,
+        branch_nodes: symbols == GraphSymbols::Branch,
     })
 }

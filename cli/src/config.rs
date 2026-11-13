@@ -20,6 +20,7 @@ use std::env::split_paths;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fmt;
+use std::iter;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -1088,6 +1089,24 @@ pub enum CommandNameAndArgs {
 }
 
 impl CommandNameAndArgs {
+    /// Returns this command with `key` set in its environment, unless the
+    /// command already sets `key`.
+    pub fn with_default_env(mut self, key: &str, value: &str) -> Self {
+        if let Self::Structured { env, .. } = &mut self {
+            env.entry(key.to_owned())
+                .or_insert_with(|| value.to_owned());
+            return self;
+        }
+        let (name, args) = self.split_name_and_args();
+        let command = iter::once(name.into_owned())
+            .chain(args.iter().cloned())
+            .collect();
+        Self::Structured {
+            env: HashMap::from([(key.to_owned(), value.to_owned())]),
+            command: NonEmptyCommandArgsVec(command),
+        }
+    }
+
     /// Returns command name without arguments.
     pub fn split_name(&self) -> Cow<'_, str> {
         let (name, _) = self.split_name_and_args();
@@ -1390,6 +1409,25 @@ mod tests {
         assert_eq!(name, ConfigNamePathBuf::from_iter(["a = b=c "]));
         assert!(value.is_inline_table());
         assert_eq!(value.to_string(), "{d = 'e=f'}");
+    }
+
+    #[test]
+    fn test_command_with_default_env() {
+        let command = CommandNameAndArgs::from("less -FRX").with_default_env("KEY", "value");
+        assert_eq!(
+            command,
+            CommandNameAndArgs::Structured {
+                env: HashMap::from([("KEY".to_owned(), "value".to_owned())]),
+                command: NonEmptyCommandArgsVec(["less", "-FRX"].map(|s| s.to_owned()).to_vec()),
+            }
+        );
+
+        // A variable that the command sets already is kept.
+        let command = CommandNameAndArgs::Structured {
+            env: HashMap::from([("KEY".to_owned(), "user".to_owned())]),
+            command: NonEmptyCommandArgsVec(vec!["less".to_owned()]),
+        };
+        assert_eq!(command.clone().with_default_env("KEY", "value"), command);
     }
 
     #[test]

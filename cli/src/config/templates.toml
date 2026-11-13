@@ -61,7 +61,11 @@ log_node = '''
 if(
   config("ui.graph.style").as_string().starts_with("ascii"),
   builtin_log_node_ascii,
-  builtin_log_node
+  if(
+    config("ui.graph.style").as_string() == "branch",
+    builtin_log_node_branch,
+    builtin_log_node
+  )
 )
 '''
 
@@ -618,6 +622,26 @@ coalesce(
     coalesce(
       if(current_working_copy, "@"),
       if(immutable, "◆"),
+      if(conflict, "×"),
+      "○",
+    )
+  )
+)
+'''
+
+# The branch graph style draws `○` and `●` as commit dots that join the lines.
+builtin_log_node_branch = '''
+coalesce(
+  if(!self, label("elided", "~")),
+  label(
+    separate(" ",
+      if(current_working_copy, "working_copy"),
+      if(immutable, "immutable", "mutable"),
+      if(conflict, "conflicted"),
+    ),
+    coalesce(
+      if(current_working_copy, "@"),
+      if(immutable, "●"),
       if(conflict, "×"),
       "○",
     )

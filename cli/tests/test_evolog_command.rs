@@ -619,6 +619,7 @@ fn test_evolog_with_no_template() {
     - builtin_log_detailed
     - builtin_log_node
     - builtin_log_node_ascii
+    - builtin_log_node_branch
     - builtin_log_oneline
     - builtin_log_redacted
     - builtin_op_log_comfortable
