@@ -1483,6 +1483,118 @@ fn test_graph_styles() {
 }
 
 #[test]
+fn test_graph_crossing() {
+    let test_env = TestEnvironment::default();
+    test_env.run_jj_in(".", ["git", "init", "repo"]).success();
+    let work_dir = test_env.work_dir("repo");
+    let new = |message: &str, parents: &[&str]| {
+        let mut args = vec!["new", "-m", message];
+        args.extend(parents);
+        work_dir.run_jj(args).success();
+    };
+    work_dir.run_jj(["describe", "-m", "A"]).success();
+    new("B", &["subject(A)"]);
+    new("D", &["subject(A)"]);
+    new("M", &["subject(B)", "subject(D)"]);
+    new("C", &["subject(A)"]);
+    new("N", &["subject(C)"]);
+    let log = |style: &str, crossing: Option<&str>| {
+        let mut args = vec![
+            "log".to_owned(),
+            "-T=description.first_line()".to_owned(),
+            format!("--config=ui.graph.style={style}"),
+        ];
+        args.extend(crossing.map(|crossing| format!("--config=ui.graph.crossing={crossing}")));
+        work_dir.run_jj(args)
+    };
+
+    // By default, the box and ASCII styles draw the horizontal line.
+    insta::assert_snapshot!(log("curved", None), @"
+    @  N
+    ○  C
+    │ ○    M
+    │ ├─╮
+    │ │ ○  D
+    ├───╯
+    │ ○  B
+    ├─╯
+    ○  A
+    ◆
+    [EOF]
+    ");
+    insta::assert_snapshot!(log("curved", Some("prefer-vertical")), @"
+    @  N
+    ○  C
+    │ ○    M
+    │ ├─╮
+    │ │ ○  D
+    ├─│─╯
+    │ ○  B
+    ├─╯
+    ○  A
+    ◆
+    [EOF]
+    ");
+    insta::assert_snapshot!(log("ascii", Some("prefer-vertical")), @r"
+    @  N
+    o  C
+    | o    M
+    | |\
+    | | o  D
+    +-|-'
+    | o  B
+    |/
+    o  A
+    +
+    [EOF]
+    ");
+
+    // By default, the large ASCII style draws the vertical line.
+    insta::assert_snapshot!(log("ascii-large", None), @r"
+    @  N
+    o  C
+    |  o     M
+    |  |\
+    |  | \
+    |  |  o  D
+    | _|_/
+    |/ |
+    |  o  B
+    | /
+    |/
+    o  A
+    +
+    [EOF]
+    ");
+    insta::assert_snapshot!(log("ascii-large", Some("prefer-horizontal")), @r"
+    @  N
+    o  C
+    |  o     M
+    |  |\
+    |  | \
+    |  |  o  D
+    | ___/
+    |/ |
+    |  o  B
+    | /
+    |/
+    o  A
+    +
+    [EOF]
+    ");
+
+    // Invalid crossing name
+    insta::assert_snapshot!(log("curved", Some("unknown")), @"
+    ------- stderr -------
+    Config error: Invalid type or value for ui.graph.crossing
+    Caused by: unknown variant `unknown`, expected `prefer-horizontal` or `prefer-vertical`
+
+    For help, see https://docs.jj-vcs.dev/latest/config/ or use `jj help -k config`.
+    [EOF]
+    [exit status: 1]
+    ");
+}
+#[test]
 fn test_log_word_wrap() {
     let test_env = TestEnvironment::default();
     test_env.run_jj_in(".", ["git", "init", "repo"]).success();

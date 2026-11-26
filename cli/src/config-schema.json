@@ -172,6 +172,13 @@
                                 "ascii-large"
                             ],
                             "default": "curved"
+                        },
+                        "crossing": {
+                            "description": "Which line the graph draws where two lines cross. If not set, the ascii-large style draws the vertical line, and the other styles draw the horizontal line. See https://docs.jj-vcs.dev/latest/config/#graph-style",
+                            "enum": [
+                                "prefer-horizontal",
+                                "prefer-vertical"
+                            ]
                         }
                     }
                 },

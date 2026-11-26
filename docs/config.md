@@ -768,6 +768,16 @@ log = "builtin_log_compact_full_description"
 graph.style = "square"
 ```
 
+Where two lines cross, the graph shows only one of them. The `ascii-large`
+style shows the vertical line, and the other styles show the horizontal line.
+To choose the line for all styles, set:
+
+```toml
+[ui]
+# Possible values: "prefer-horizontal", "prefer-vertical"
+graph.crossing = "prefer-vertical"
+```
+
 #### Graph colors
 
 Each line of the graph can have its own color, so that you can follow a line

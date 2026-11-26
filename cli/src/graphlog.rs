@@ -17,6 +17,7 @@ use std::hash::Hash;
 use std::io;
 
 use jj_lib::config::ConfigGetError;
+use jj_lib::config::ConfigGetResultExt as _;
 use jj_lib::graph::GraphEdge;
 use jj_lib::graph::GraphEdgeType;
 use jj_lib::settings::UserSettings;
@@ -24,6 +25,7 @@ use renderdag::Ancestor;
 use renderdag::pipeline::Ascii;
 use renderdag::pipeline::AsciiLarge;
 use renderdag::pipeline::BoxDrawing;
+use renderdag::pipeline::CrossingPriority;
 use renderdag::pipeline::GraphRowShaper;
 use renderdag::pipeline::PrefixLineRenderer;
 use renderdag::pipeline::PrefixLinesToText;
@@ -160,37 +162,60 @@ fn write_piece(
     }
 }
 
+/// The symbols that draw the graph, from `ui.graph.style`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
 #[serde(rename_all(deserialize = "kebab-case"))]
-pub enum GraphStyle {
+pub enum GraphSymbols {
     Ascii,
     AsciiLarge,
     Curved,
     Square,
 }
 
+/// Which line the graph draws where two lines cross.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
+#[serde(rename_all(deserialize = "kebab-case"))]
+pub enum GraphCrossing {
+    /// The horizontal line hides the vertical line.
+    PreferHorizontal,
+    /// The vertical line goes through a gap in the horizontal line.
+    PreferVertical,
+}
+
+/// How a graph is drawn, from the `ui.graph` settings.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GraphStyle {
+    pub symbols: GraphSymbols,
+    /// If `None`, the renderer chooses: the vertical line for `ascii-large`, and
+    /// the horizontal line for the other symbol sets.
+    pub crossing: Option<GraphCrossing>,
+}
+
 impl GraphStyle {
     pub fn from_settings(settings: &UserSettings) -> Result<Self, ConfigGetError> {
-        settings.get("ui.graph.style")
+        Ok(Self {
+            symbols: settings.get("ui.graph.style")?,
+            crossing: settings.get("ui.graph.crossing").optional()?,
+        })
     }
 }
 
 pub fn get_graphlog<'a, K: Clone + Debug + Eq + Hash + 'a>(
     ui: &'a Ui,
-    style: GraphStyle,
+    GraphStyle { symbols, crossing }: GraphStyle,
     formatter: &'a mut dyn Formatter,
 ) -> Box<dyn GraphLog<K> + 'a> {
-    let prefix_lines: Box<dyn PrefixLineRenderer<K>> = match style {
-        GraphStyle::Ascii => Box::new(Ascii::new()),
-        GraphStyle::AsciiLarge => Box::new(AsciiLarge),
-        GraphStyle::Curved => Box::new(BoxDrawing::<Curved>::new()),
-        GraphStyle::Square => Box::new(BoxDrawing::<Square>::new()),
+    let prefix_lines: Box<dyn PrefixLineRenderer<K>> = match symbols {
+        GraphSymbols::Ascii => Box::new(Ascii::new()),
+        GraphSymbols::AsciiLarge => Box::new(AsciiLarge),
+        GraphSymbols::Curved => Box::new(BoxDrawing::<Curved>::new()),
+        GraphSymbols::Square => Box::new(BoxDrawing::<Square>::new()),
     };
     // Match renderdag's column widths for each style. PrefixLineRenderer does
     // not expose the column-to-character conversion through its public API.
-    let columns_to_chars: fn(u64) -> u64 = match style {
+    let columns_to_chars: fn(u64) -> u64 = match symbols {
         // The first column is only 2 characters wide.
-        GraphStyle::AsciiLarge => |columns| {
+        GraphSymbols::AsciiLarge => |columns| {
             columns
                 .saturating_mul(3)
                 .saturating_sub(1)
@@ -200,7 +225,13 @@ pub fn get_graphlog<'a, K: Clone + Debug + Eq + Hash + 'a>(
     };
     let allocator = build_line_id_allocator_from_rules("parent,incoming,free", LINE_LABELS.len());
     let mut shaper = GraphRowShaper::new().with_line_id_allocator(allocator);
-    shaper.options_mut().min_row_height = 0;
+    let options = shaper.options_mut();
+    options.min_row_height = 0;
+    options.graph_row_shape_style.crossing_priority = match crossing {
+        None => CrossingPriority::RendererDefault,
+        Some(GraphCrossing::PreferHorizontal) => CrossingPriority::Horizontal,
+        Some(GraphCrossing::PreferVertical) => CrossingPriority::Vertical,
+    };
     Box::new(SaplingGraphLog {
         shaper,
         prefix_lines,
